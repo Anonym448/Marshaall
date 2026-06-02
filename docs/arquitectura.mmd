@@ -1,0 +1,58 @@
+graph TB
+    subgraph HOST["HOST — Ubuntu Server / WSL2"]
+        direction TB
+
+        SURICATA["Suricata 7.x\nNativo en host\nCaptura: --pcap"]
+        EVE[("eve.json\n/var/log/suricata/")]
+        SURICATA -->|"escribe eventos JSON"| EVE
+
+        subgraph DOCKER["Docker Compose — 5 contenedores"]
+            direction TB
+
+            subgraph NET["Red interna: backend_net"]
+                direction LR
+
+                INGEST["Ingest\nPython 3.12\nTail eve.json\nDeduplicacion"]
+
+                MARIADB[("MariaDB 11\nPuerto 3306\nutf8mb4")]
+
+                BACKEND["Backend\nFlask 3.0 + Gunicorn\nAPI REST :8000\n33 endpoints\nReportes PDF/XML/CSV"]
+
+                NGINX["Nginx Alpine\nReverse Proxy\nFrontend estatico\n/api/* → :8000"]
+
+                MAILPIT["Mailpit\nSMTP :1025\nWeb UI :8025"]
+            end
+        end
+    end
+
+    subgraph EXTERNAL["Red local del cliente — LAN"]
+        SWITCH["Switch de red\nPort mirroring / TAP"]
+        BROWSER["Navegador\nAnalista de seguridad"]
+    end
+
+    SWITCH -->|"trafico espejado"| SURICATA
+
+    EVE -->|"bind mount\nread-only"| INGEST
+    INGEST -->|"INSERT events\nPyMySQL :3306"| MARIADB
+    INGEST -->|"POST /api/notify-alert\nHTTP :8000\nX-Internal-Secret"| BACKEND
+    BACKEND -->|"SELECT / INSERT\nPyMySQL :3306"| MARIADB
+    BACKEND -->|"SMTP :1025\nAlertas + Reportes"| MAILPIT
+    NGINX -->|"proxy_pass\nHTTP :8000\n/api/*"| BACKEND
+    BROWSER -->|"HTTP :80\nDashboard + API"| NGINX
+
+    MARIADB -.->|"vol: db_data"| DB_VOL[("db_data\n/var/lib/mysql")]
+    INGEST -.->|"vol: ingest_state"| STATE_VOL[("ingest_state\noffset.txt")]
+
+    classDef host fill:#1e293b,stroke:#334155,color:#e2e8f0
+    classDef docker fill:#0f172a,stroke:#1e3a5f,color:#e2e8f0
+    classDef service fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0,stroke-width:2px
+    classDef db fill:#1e3a5f,stroke:#22c55e,color:#e2e8f0,stroke-width:2px
+    classDef external fill:#1a1a2e,stroke:#f59e0b,color:#e2e8f0
+    classDef volume fill:#111827,stroke:#6b7280,color:#94a3b8,stroke-dasharray:5 5
+
+    class HOST host
+    class DOCKER docker
+    class INGEST,BACKEND,NGINX,MAILPIT,SURICATA service
+    class MARIADB db
+    class SWITCH,BROWSER external
+    class DB_VOL,STATE_VOL,EVE volume

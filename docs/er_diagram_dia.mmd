@@ -1,0 +1,74 @@
+erDiagram
+    users {
+        INT id PK "AUTO_INCREMENT"
+        VARCHAR username UK "NOT NULL, UNIQUE"
+        VARCHAR password_hash "NOT NULL"
+        ENUM role "admin|analista|viewer"
+        TINYINT active "DEFAULT 1"
+        TIMESTAMP created_at "DEFAULT NOW()"
+    }
+
+    events {
+        BIGINT id PK "AUTO_INCREMENT"
+        DATETIME ts "NOT NULL, idx"
+        VARCHAR event_type "alert|flow|dns|..."
+        VARCHAR src_ip "(45)"
+        VARCHAR dest_ip "(45)"
+        VARCHAR proto "(16) TCP|UDP|ICMP"
+        VARCHAR signature "(255)"
+        TINYINT severity "1=Alta 2=Media 3=Baja"
+        BIGINT flow_id "idx"
+        INT src_port ""
+        INT dest_port ""
+        VARCHAR category "(100)"
+        LONGTEXT raw_json "NOT NULL"
+    }
+
+    alert_status {
+        BIGINT event_id PK, FK "REFERENCES events(id)"
+        ENUM status "nueva|investigacion|cerrada"
+        VARCHAR assigned_to "(50)"
+        TIMESTAMP updated_at "ON UPDATE NOW()"
+        VARCHAR updated_by "(50)"
+    }
+
+    alert_comments {
+        BIGINT id PK "AUTO_INCREMENT"
+        BIGINT event_id FK "REFERENCES events(id)"
+        VARCHAR author "(50) NOT NULL"
+        TEXT body "NOT NULL"
+        TIMESTAMP created_at "DEFAULT NOW()"
+    }
+
+    incidents {
+        BIGINT id PK "AUTO_INCREMENT"
+        VARCHAR title "(200) NOT NULL"
+        TEXT description ""
+        TINYINT severity "DEFAULT 3 (1-5)"
+        ENUM status "abierto|en_progreso|cerrado"
+        VARCHAR created_by "(50) NOT NULL"
+        VARCHAR tags "(500)"
+        TIMESTAMP created_at "DEFAULT NOW()"
+        TIMESTAMP updated_at "ON UPDATE NOW()"
+    }
+
+    incident_alerts {
+        BIGINT incident_id PK, FK "REFERENCES incidents(id)"
+        BIGINT event_id PK, FK "REFERENCES events(id)"
+        TIMESTAMP added_at "DEFAULT NOW()"
+        VARCHAR added_by "(50)"
+    }
+
+    incident_comments {
+        BIGINT id PK "AUTO_INCREMENT"
+        BIGINT incident_id FK "REFERENCES incidents(id)"
+        VARCHAR author "(50) NOT NULL"
+        TEXT body "NOT NULL"
+        TIMESTAMP created_at "DEFAULT NOW()"
+    }
+
+    events ||--o| alert_status : "tiene estado"
+    events ||--o{ alert_comments : "tiene comentarios"
+    events }o--o{ incident_alerts : ""
+    incidents }o--o{ incident_alerts : ""
+    incidents ||--o{ incident_comments : "tiene comentarios"

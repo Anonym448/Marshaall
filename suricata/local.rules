@@ -1,0 +1,420 @@
+# ══════════════════════════════════════════════════════════════
+# Marshaall SIEM — Reglas de detección Suricata
+# Versión: 3.0 (2026-05-05)
+# ══════════════════════════════════════════════════════════════
+# Nota: Usamos "any any -> any any" en muchas reglas porque en
+# WSL2 con Docker+portproxy, las IPs de origen del tráfico
+# externo se reescriben al gateway WSL2, haciendo ineficaz
+# la distinción HOME_NET / EXTERNAL_NET para tráfico de red.
+# ══════════════════════════════════════════════════════════════
+
+
+# ══════════════════════════════════════════════════════════════
+# 1. ESCANEO DE PUERTOS  (SID 1000001–1000019)
+# ══════════════════════════════════════════════════════════════
+
+# SYN scan — muchos SYN en poco tiempo
+alert tcp any any -> any any ( \
+    msg:"MARSHAALL SCAN SYN portscan detectado"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 200, seconds 5; \
+    classtype:attempted-recon; \
+    sid:1000001; rev:5;)
+
+# NULL scan (0 flags)
+alert tcp any any -> any any ( \
+    msg:"MARSHAALL SCAN NULL scan detectado"; \
+    flags:0,12; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    classtype:attempted-recon; \
+    sid:1000002; rev:2;)
+
+# XMAS scan (FIN+PSH+URG)
+alert tcp any any -> any any ( \
+    msg:"MARSHAALL SCAN XMAS scan detectado"; \
+    flags:FPU,12; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    classtype:attempted-recon; \
+    sid:1000003; rev:2;)
+
+# FIN scan
+alert tcp any any -> any any ( \
+    msg:"MARSHAALL SCAN FIN scan detectado"; \
+    flags:F,12; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    classtype:attempted-recon; \
+    sid:1000004; rev:2;)
+
+# ICMP ping
+alert icmp any any -> any any ( \
+    msg:"MARSHAALL SCAN ICMP Ping sweep detectado"; \
+    itype:8; \
+    threshold:type threshold, track by_src, count 10, seconds 10; \
+    classtype:attempted-recon; \
+    sid:1000005; rev:3;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 2. DENEGACIÓN DE SERVICIO (DoS)  (SID 1000020–1000029)
+# ══════════════════════════════════════════════════════════════
+
+# ICMP flood
+alert icmp any any -> any any ( \
+    msg:"MARSHAALL DOS ICMP flood detectado"; \
+    itype:8; \
+    threshold:type threshold, track by_src, count 100, seconds 5; \
+    classtype:denial-of-service; \
+    sid:1000020; rev:3;)
+
+# TCP SYN flood
+alert tcp any any -> any any ( \
+    msg:"MARSHAALL DOS TCP SYN flood detectado"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 200, seconds 5; \
+    classtype:denial-of-service; \
+    sid:1000021; rev:3;)
+
+# UDP flood
+alert udp any any -> any any ( \
+    msg:"MARSHAALL DOS UDP flood detectado"; \
+    threshold:type threshold, track by_src, count 500, seconds 5; \
+    classtype:denial-of-service; \
+    sid:1000022; rev:3;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 3. FUERZA BRUTA  (SID 1000030–1000039)
+# ══════════════════════════════════════════════════════════════
+
+# SSH brute force
+alert tcp any any -> any 22 ( \
+    msg:"MARSHAALL BRUTE SSH fuerza bruta detectada"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 10, seconds 30; \
+    classtype:attempted-admin; \
+    sid:1000030; rev:3;)
+
+# FTP brute force
+alert tcp any any -> any 21 ( \
+    msg:"MARSHAALL BRUTE FTP fuerza bruta detectada"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 10, seconds 30; \
+    classtype:attempted-admin; \
+    sid:1000031; rev:3;)
+
+# RDP brute force
+alert tcp any any -> any 3389 ( \
+    msg:"MARSHAALL BRUTE RDP fuerza bruta detectada"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 10, seconds 30; \
+    classtype:attempted-admin; \
+    sid:1000032; rev:3;)
+
+# HTTP login brute force
+alert http any any -> any any ( \
+    msg:"MARSHAALL BRUTE HTTP login fuerza bruta detectada"; \
+    flow:to_server,established; \
+    http.method; content:"POST"; \
+    http.uri; content:"/login"; nocase; \
+    threshold:type threshold, track by_src, count 10, seconds 60; \
+    classtype:attempted-admin; \
+    sid:1000033; rev:3;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 4. SCANNERS WEB  (SID 1000040–1000049)
+# ══════════════════════════════════════════════════════════════
+
+# Nikto
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Scanner Nikto detectado"; \
+    flow:to_server,established; \
+    content:"Nikto"; nocase; http_user_agent; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000040; rev:2;)
+
+# sqlmap
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Scanner sqlmap detectado"; \
+    flow:to_server,established; \
+    content:"sqlmap"; nocase; http_user_agent; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000041; rev:2;)
+
+# DirBuster / dirb
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Scanner DirBuster detectado"; \
+    flow:to_server,established; \
+    content:"DirBuster"; nocase; http_user_agent; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000042; rev:2;)
+
+# gobuster
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Scanner gobuster detectado"; \
+    flow:to_server,established; \
+    content:"gobuster"; nocase; http_user_agent; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000043; rev:2;)
+
+# wfuzz
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Scanner wfuzz detectado"; \
+    flow:to_server,established; \
+    content:"wfuzz"; nocase; http_user_agent; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000044; rev:2;)
+
+# Nmap NSE
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Nmap NSE Script detectado"; \
+    flow:to_server,established; \
+    content:"Nmap"; nocase; http_user_agent; \
+    classtype:attempted-recon; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000045; rev:2;)
+
+# Metasploit User-Agent
+alert http any any -> any any ( \
+    msg:"MARSHAALL EXPLOIT Metasploit User-Agent detectado"; \
+    flow:to_server,established; \
+    content:"Metasploit"; nocase; http_user_agent; \
+    classtype:trojan-activity; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000046; rev:2;)
+
+# Herramientas de pentesting genéricas
+alert http any any -> any any ( \
+    msg:"MARSHAALL EXPLOIT User-Agent de pentesting detectado"; \
+    flow:to_server,established; \
+    pcre:"/(Meterpreter|Cobalt\s*Strike|Burp\s*Suite|OWASP|ZAP|Acunetix)/Hi"; \
+    classtype:trojan-activity; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000047; rev:2;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 5. SQL INJECTION  (SID 1000050–1000059)
+# ══════════════════════════════════════════════════════════════
+
+# UNION SELECT
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB SQL Injection UNION SELECT en URI"; \
+    flow:to_server,established; \
+    content:"UNION"; nocase; http_uri; \
+    content:"SELECT"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000050; rev:2;)
+
+# OR 1=1
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB SQL Injection OR boolean en URI"; \
+    flow:to_server,established; \
+    pcre:"/(\bOR\b\s+[\d'\"]+\s*=\s*[\d'\"]+)/Ui"; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000051; rev:2;)
+
+# Comment evasion (--, #)
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB SQL Injection comment evasion detectado"; \
+    flow:to_server,established; \
+    pcre:"/(--|%23|\/\*|\*\/).*(SELECT|UNION|INSERT|UPDATE|DELETE|DROP|ALTER)/Ui"; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000052; rev:2;)
+
+# DROP/ALTER/DELETE en URI
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB SQL Injection DROP/ALTER/DELETE en URI"; \
+    flow:to_server,established; \
+    pcre:"/(DROP\s+TABLE|ALTER\s+TABLE|DELETE\s+FROM|TRUNCATE\s+TABLE)/Ui"; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000053; rev:2;)
+
+# SLEEP/BENCHMARK (blind SQLi)
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB SQL Injection blind (SLEEP/BENCHMARK) detectado"; \
+    flow:to_server,established; \
+    pcre:"/(SLEEP\s*\(|BENCHMARK\s*\(|WAITFOR\s+DELAY)/Ui"; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000054; rev:2;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 6. XSS (Cross-Site Scripting)  (SID 1000060–1000064)
+# ══════════════════════════════════════════════════════════════
+
+# <script> tag
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB XSS script tag en URI"; \
+    flow:to_server,established; \
+    content:"<script"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000060; rev:2;)
+
+# URL-encoded <script>
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB XSS script tag URL-encoded en URI"; \
+    flow:to_server,established; \
+    content:"%3Cscript"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000061; rev:2;)
+
+# onerror/onload handler
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB XSS event handler en URI"; \
+    flow:to_server,established; \
+    pcre:"/(onerror|onload|onmouseover|onfocus)\s*=/Ui"; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000062; rev:2;)
+
+# javascript: in URI
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB XSS javascript: URI detectado"; \
+    flow:to_server,established; \
+    content:"javascript:"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000063; rev:2;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 7. LFI / DIRECTORY TRAVERSAL  (SID 1000070–1000074)
+# ══════════════════════════════════════════════════════════════
+
+# /etc/passwd
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB LFI /etc/passwd detectado"; \
+    flow:to_server,established; \
+    content:"/etc/passwd"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000070; rev:2;)
+
+# ../ traversal
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB Directory traversal detectado"; \
+    flow:to_server,established; \
+    content:"../"; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000071; rev:2;)
+
+# /etc/shadow
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB LFI /etc/shadow detectado"; \
+    flow:to_server,established; \
+    content:"/etc/shadow"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000072; rev:2;)
+
+# /proc/self/environ
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB LFI /proc/self/environ detectado"; \
+    flow:to_server,established; \
+    content:"/proc/self/environ"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000073; rev:2;)
+
+# Windows path traversal
+alert http any any -> any any ( \
+    msg:"MARSHAALL WEB LFI Windows path traversal detectado"; \
+    flow:to_server,established; \
+    content:"..\\"; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000074; rev:2;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 8. RCE / COMMAND INJECTION  (SID 1000080–1000089)
+# ══════════════════════════════════════════════════════════════
+
+# Shellshock CVE-2014-6271
+alert http any any -> any any ( \
+    msg:"MARSHAALL EXPLOIT Shellshock CVE-2014-6271 detectado"; \
+    flow:to_server,established; \
+    content:"() {"; http_header; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000080; rev:2;)
+
+# Command injection in URI (;cmd)
+alert http any any -> any any ( \
+    msg:"MARSHAALL EXPLOIT Command Injection en URI"; \
+    flow:to_server,established; \
+    content:"%3B"; nocase; http_uri; \
+    content:"cat"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000081; rev:3;)
+
+# PHP Remote File Inclusion
+alert http any any -> any any ( \
+    msg:"MARSHAALL EXPLOIT PHP Remote File Inclusion detectada"; \
+    flow:to_server,established; \
+    content:"=http"; nocase; http_uri; \
+    content:".php"; nocase; http_uri; \
+    classtype:web-application-attack; \
+    threshold:type limit, track by_src, count 1, seconds 30; \
+    sid:1000082; rev:2;)
+
+# Webshell keywords
+alert http any any -> any any ( \
+    msg:"MARSHAALL EXPLOIT Posible webshell detectada"; \
+    flow:to_server,established; \
+    pcre:"/(c99|r57|b374k|wso|phpspy|weevely)/Ui"; \
+    classtype:trojan-activity; \
+    threshold:type limit, track by_src, count 1, seconds 60; \
+    sid:1000083; rev:2;)
+
+
+# ══════════════════════════════════════════════════════════════
+# 9. ACCESO A SERVICIOS SENSIBLES  (SID 1000090–1000099)
+# ══════════════════════════════════════════════════════════════
+
+# SMB 
+alert tcp $EXTERNAL_NET any -> any 445 ( \
+    msg:"MARSHAALL EXPLOIT Acceso SMB detectado"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 5, seconds 30; \
+    classtype:attempted-admin; \
+    sid:1000090; rev:3;)
+
+# MySQL/MariaDB
+alert tcp $EXTERNAL_NET any -> any 3306 ( \
+    msg:"MARSHAALL EXPLOIT Acceso MySQL externo detectado"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 5, seconds 30; \
+    classtype:attempted-admin; \
+    sid:1000091; rev:3;)
+
+# Reverse shell puertos típicos
+alert tcp $EXTERNAL_NET any -> any [4444,4445,5555,1234,31337] ( \
+    msg:"MARSHAALL EXPLOIT Posible reverse shell detectada"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 3, seconds 30; \
+    classtype:trojan-activity; \
+    sid:1000092; rev:3;)
+
+# Telnet
+alert tcp $EXTERNAL_NET any -> any 23 ( \
+    msg:"MARSHAALL EXPLOIT Acceso Telnet detectado"; \
+    flags:S,12; \
+    threshold:type threshold, track by_src, count 3, seconds 30; \
+    classtype:attempted-admin; \
+    sid:1000093; rev:3;)

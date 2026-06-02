@@ -1,0 +1,74 @@
+erDiagram
+    users {
+        INT id PK
+        VARCHAR_50 username UK
+        VARCHAR_255 password_hash
+        ENUM role "admin | analista | viewer"
+        TINYINT active "1 = activo"
+        TIMESTAMP created_at
+    }
+
+    events {
+        BIGINT id PK
+        DATETIME_6 ts
+        VARCHAR_50 event_type "alert | flow | dns | ..."
+        VARCHAR_45 src_ip
+        VARCHAR_45 dest_ip
+        VARCHAR_16 proto "TCP | UDP | ICMP"
+        VARCHAR_255 signature
+        TINYINT severity "1=Alta 2=Media 3=Baja"
+        BIGINT flow_id
+        INT src_port
+        INT dest_port
+        VARCHAR_100 category
+        LONGTEXT raw_json
+    }
+
+    alert_status {
+        BIGINT event_id PK, FK
+        ENUM status "nueva | investigacion | cerrada"
+        VARCHAR_50 assigned_to
+        TIMESTAMP updated_at
+        VARCHAR_50 updated_by
+    }
+
+    alert_comments {
+        BIGINT id PK
+        BIGINT event_id FK
+        VARCHAR_50 author
+        TEXT body
+        TIMESTAMP created_at
+    }
+
+    incidents {
+        BIGINT id PK
+        VARCHAR_200 title
+        TEXT description
+        TINYINT severity "1-5"
+        ENUM status "abierto | en_progreso | cerrado"
+        VARCHAR_50 created_by
+        VARCHAR_500 tags
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+
+    incident_alerts {
+        BIGINT incident_id PK, FK
+        BIGINT event_id PK, FK
+        TIMESTAMP added_at
+        VARCHAR_50 added_by
+    }
+
+    incident_comments {
+        BIGINT id PK
+        BIGINT incident_id FK
+        VARCHAR_50 author
+        TEXT body
+        TIMESTAMP created_at
+    }
+
+    events ||--o| alert_status : "1:0..1 estado de alerta"
+    events ||--o{ alert_comments : "1:N comentarios"
+    events }o--o{ incident_alerts : "N:M via tabla pivote"
+    incidents }o--o{ incident_alerts : "N:M via tabla pivote"
+    incidents ||--o{ incident_comments : "1:N comentarios"

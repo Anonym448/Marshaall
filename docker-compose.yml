@@ -1,0 +1,143 @@
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: marshaall-mariadb
+    restart: unless-stopped
+    env_file: .env
+    command: --default-time-zone='Europe/Madrid'
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MYSQL_DATABASE}
+      MARIADB_USER: ${MYSQL_USER}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend_net
+
+  ingest:
+    build: ./ingest
+    container_name: marshaall-ingest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mariadb
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      EVE_PATH: /data/suricata/eve.json
+      STATE_PATH: /state/offset.txt
+      TZ: ${TZ}
+      BACKEND_URL: http://backend:8000
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+    command: python -u app.py
+    volumes:
+      - /var/log/suricata:/data/suricata:ro
+      - ingest_state:/state
+    depends_on:
+      - mariadb
+    networks:
+      - backend_net
+
+  backend:
+    build: ./backend
+    container_name: marshaall-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mariadb
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      API_SECRET: ${API_SECRET}
+      TOKEN_TTL_SECONDS: 3600
+      ADMIN_USER: admin
+      ADMIN_PASS: admin1234
+      TZ: ${TZ}
+      # SMTP / Email
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      # Reporte diario
+      REPORT_TO: ${REPORT_TO:-}
+      REPORT_TIME: ${REPORT_TIME:-06:00}
+      REPORT_TZ: ${REPORT_TZ:-Europe/Madrid}
+      REPORT_RANGE: ${REPORT_RANGE:-24h}
+      # Alertas en tiempo real
+      ALERT_TO: ${ALERT_TO:-}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+      ALERT_DEDUP_WINDOW: ${ALERT_DEDUP_WINDOW:-300}
+      ALERT_MAX_EMAIL_PER_MIN: ${ALERT_MAX_EMAIL_PER_MIN:-5}
+    volumes:
+      - ./frontend/imagenes:/usr/share/nginx/html/imagenes:ro
+    depends_on:
+      - mariadb
+    networks:
+      - backend_net
+
+# DESPUÉS (con HTTPS):
+  nginx:
+    image: nginx:alpine
+    container_name: marshaall-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    networks:
+      - backend_net
+
+  # ─── Suricata: se ejecuta NATIVO en WSL2 (no en Docker) ───
+  # Docker Desktop usa una VM LinuxKit con red propia (192.168.65.x).
+  # network_mode:"host" da acceso a esa VM, NO a la red de WSL2,
+  # así que el contenedor nunca ve tráfico de Kali ni del host real.
+  # Ejecutar nativo: sudo suricata --pcap=any -k none -D
+  #
+  # suricata:
+  #   image: jasonish/suricata:7.0.3
+  #   container_name: marshaall-suricata
+  #   restart: unless-stopped
+  #   network_mode: "host"
+  #   cap_add:
+  #     - NET_ADMIN
+  #     - SYS_NICE
+  #     - NET_RAW
+  #   volumes:
+  #     - /var/log/suricata:/var/log/suricata
+  #     - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+  #     - ./suricata/local.rules:/var/lib/suricata/rules/local.rules:ro
+  #   command: suricata -c /etc/suricata/suricata.yaml --pcap=any -k none -v
+
+# DESPUÉS (con HTTPS en la UI web):
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: marshaall-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # Interfaz web HTTPS
+      - "1025:1025"   # Puerto SMTP interno (sin cambios)
+    volumes:
+      - ./nginx/ssl:/etc/mailpit/ssl:ro
+    environment:
+      MP_UI_TLS_CERT: /etc/mailpit/ssl/marshaall.crt
+      MP_UI_TLS_KEY: /etc/mailpit/ssl/marshaall.key
+    networks:
+      - backend_net
+
+networks:
+  backend_net:
+
+volumes:
+  db_data:
+  ingest_state:
+
