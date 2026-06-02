@@ -35,7 +35,7 @@ docker logs marshaall-ingest -f
 
 ## 📚 Documentación
 
-Para información detallada sobre el uso, generación de alertas, y testing, consulta nuestra [Documentación Oficial (Directorio `docs/`)](./docs/README.md). Encontrarás:
+Para información detallada sobre el uso, generación de alertas, y testing, consulta nuestra [Documentación Oficial (Directorio `docs/`)](./docs). Encontrarás:
 
 - [Quickstart de Alertas](./docs/QUICKSTART_ALERTAS.md)
 - [Guía de Generación de Alertas](./docs/GUIA_GENERACION_ALERTAS.md)
